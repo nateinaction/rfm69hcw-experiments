@@ -1,18 +1,8 @@
-// **********************************************************************************
-//            !!!!     ATTENTION:    !!!!
-// This is just a simple receiving sketch that will work with most examples
-// in the RFM69 library.
-//
-// If you're looking for the Gateway sketch to use with your RaspberryPi,
-// as part of the PiGateway software interface (lowpowerlab.com/gateway),
-// this is the wrong sketch. Use this sketch instead: PiGateway:
-// https://github.com/LowPowerLab/RFM69/blob/master/Examples/PiGateway/PiGateway.ino
-// **********************************************************************************
-// Sample RFM69 receiver/gateway sketch, with ACK and optional encryption, and Automatic Transmission Control
-// Passes through any wireless received messages to the serial port & responds to ACKs
+// Sample RFM69 sender/node sketch, with ACK and optional encryption, and Automatic Transmission Control
+// Sends periodic messages of increasing length to gateway (id=1)
 // It also looks for an onboard FLASH chip, if present
 // **********************************************************************************
-// Copyright Felix Rusu 2016, http://www.LowPowerLab.com/contact
+// Copyright Felix Rusu 2018, http://www.LowPowerLab.com/contact
 // **********************************************************************************
 // License
 // **********************************************************************************
@@ -38,16 +28,28 @@
 #include <RFM69_ATC.h>     //get it here: https://www.github.com/lowpowerlab/rfm69
 #include <string.h>        //included with Arduino IDE (www.arduino.cc)
 // #include <SPIFlash.h>      //get it here: https://www.github.com/lowpowerlab/spiflash
-// #include <SPI.h>           //included with Arduino IDE (www.arduino.cc)
 
 //*********************************************************************************************
-//************ IMPORTANT SETTINGS - YOU MUST CHANGE/CONFIGURE TO FIT YOUR HARDWARE *************
+//************ IMPORTANT SETTINGS - YOU MUST CHANGE/CONFIGURE TO FIT YOUR HARDWARE ************
 //*********************************************************************************************
-#define NODEID        1    //should always be 1 for a Gateway
-#define NETWORKID     100  //the same on all nodes that talk to each other
-//Match frequency to the hardware version of the radio on your Moteino (uncomment one):
-#define FREQUENCY     RF69_433MHZ
-// #define FREQUENCY     RF69_868MHZ
+// Address IDs are 10bit, meaning usable ID range is 1..1023
+// Address 0 is special (broadcast), messages to address 0 are received by all *listening* nodes (ie. active RX mode)
+// Gateway ID should be kept at ID=1 for simplicity, although this is not a hard constraint
+//*********************************************************************************************
+#define NODEID        2    // keep UNIQUE for each node on same network
+#define NETWORKID     100  // keep IDENTICAL on all nodes that talk to each other
+#define GATEWAYID     1    // "central" node
+
+//*********************************************************************************************
+// Frequency should be set to match the radio module hardware tuned frequency,
+// otherwise if say a "433mhz" module is set to work at 915, it will work but very badly.
+// Moteinos and RF modules from LowPowerLab are marked with a colored dot to help identify their tuned frequency band,
+// see this link for details: https://lowpowerlab.com/guide/moteino/transceivers/
+// The below examples are predefined "center" frequencies for the radio's tuned "ISM frequency band".
+// You can always set the frequency anywhere in the "frequency band", ex. the 915mhz ISM band is 902..928mhz.
+//*********************************************************************************************
+#define FREQUENCY   RF69_433MHZ
+// #define FREQUENCY   RF69_868MHZ
 // #define FREQUENCY     RF69_915MHZ
 // #define FREQUENCY_EXACT 916000000 // you may define an exact frequency/channel in Hz
 
@@ -69,10 +71,18 @@
 //Usually you do not need to always transmit at max output power
 //By reducing TX power even a little you save a significant amount of battery power
 //This setting enables this gateway to work with remote nodes that have ATC enabled to
-//dial their power down to only the required level
+//dial their power down to only the required level (ATC_RSSI)
 #define ENABLE_ATC    //comment out this line to disable AUTO TRANSMISSION CONTROL
+#define ATC_RSSI      -80
 //*********************************************************************************************
 #define SERIAL_BAUD   9600
+
+int TRANSMITPERIOD = 200; //transmit a packet to gateway so often (in ms)
+char payload[] = "123 ABCDEFGHIJKLMNOPQRSTUVWXYZ KK4PDM";
+char buff[20];
+byte sendSize=0;
+boolean requestACK = false;
+// SPIFlash flash(SS_FLASHMEM, 0xEF30); //EF30 for 4mbit  Windbond chip (W25X40CL)
 
 #ifdef ENABLE_ATC
   RFM69_ATC radio;
@@ -80,17 +90,8 @@
   RFM69 radio;
 #endif
 
-// SPIFlash flash(SS_FLASHMEM, 0xEF30); //EF30 for 4mbit  Windbond chip (W25X40CL)
-bool spy = false; //set to 'true' to sniff all packets on the same network
-
 void setup() {
   Serial.begin(SERIAL_BAUD);
-
-  Serial.print("Gateway ");
-  Serial.print(NODEID,DEC);
-  Serial.println(" ready");
-
-  delay(10);
   radio.initialize(FREQUENCY,NODEID,NETWORKID);
   radio.setHighPower(); //must include this only for RFM69HW/HCW!
 
@@ -98,67 +99,78 @@ void setup() {
   radio.encrypt(ENCRYPTKEY);
 #endif
 
-  radio.spyMode(spy);
-
 #ifdef FREQUENCY_EXACT
   radio.setFrequency(FREQUENCY_EXACT); //set frequency to some custom frequency
 #endif
+  
+//Auto Transmission Control - dials down transmit power to save battery (-100 is the noise floor, -90 is still pretty good)
+//For indoor nodes that are pretty static and at pretty stable temperatures (like a MotionMote) -90dBm is quite safe
+//For more variable nodes that can expect to move or experience larger temp drifts a lower margin like -70 to -80 would probably be better
+//Always test your ATC mote in the edge cases in your own environment to ensure ATC will perform as you expect
+#ifdef ENABLE_ATC
+  radio.enableAutoPower(ATC_RSSI);
+#endif
 
   char buff[50];
-  sprintf(buff, "\nListening at %d Mhz...", FREQUENCY==RF69_433MHZ ? 433 : FREQUENCY==RF69_868MHZ ? 868 : 915);
+  sprintf(buff, "\nTransmitting at %d Mhz...", FREQUENCY==RF69_433MHZ ? 433 : FREQUENCY==RF69_868MHZ ? 868 : 915);
   Serial.println(buff);
+
   // if (flash.initialize())
   // {
-  //   Serial.print("SPI Flash Init OK. Unique MAC = [");
+  //   Serial.print("SPI Flash Init OK ... UniqueID (MAC): ");
   //   flash.readUniqueId();
   //   for (byte i=0;i<8;i++)
   //   {
   //     Serial.print(flash.UNIQUEID[i], HEX);
-  //     if (i!=8) Serial.print(':');
+  //     Serial.print(' ');
   //   }
-  //   Serial.println(']');
-    
-  //   //alternative way to read it:
-  //   //byte* MAC = flash.readUniqueId();
-  //   //for (byte i=0;i<8;i++)
-  //   //{
-  //   //  Serial.print(MAC[i], HEX);
-  //   //  Serial.print(' ');
-  //   //}
+  //   Serial.println();
   // }
   // else
   //   Serial.println("SPI Flash MEM not found (is chip soldered?)...");
-    
+
 #ifdef ENABLE_ATC
-  Serial.println("RFM69_ATC Enabled (Auto Transmission Control)");
+  Serial.println("RFM69_ATC Enabled (Auto Transmission Control)\n");
 #endif
 }
 
-byte ackCount=0;
-uint32_t packetCount = 0;
+void Blink(byte PIN, int DELAY_MS)
+{
+  pinMode(PIN, OUTPUT);
+  digitalWrite(PIN,HIGH);
+  delay(DELAY_MS);
+  digitalWrite(PIN,LOW);
+}
+
+long lastPeriod = 0;
 void loop() {
+  Serial.println("hello");
   //process any serial input
   if (Serial.available() > 0)
   {
     char input = Serial.read();
-    if (input == 'r') //d=dump all register values
-      radio.readAllRegs();
-    if (input == 'E') //E=enable encryption
-      radio.encrypt(ENCRYPTKEY);
-    if (input == 'e') //e=disable encryption
-      radio.encrypt(null);
-    if (input == 'p')
+    if (input >= 48 && input <= 57) //[0,9]
     {
-      spy = !spy;
-      radio.spyMode(spy);
-      Serial.print("SpyMode mode ");Serial.println(spy ? "on" : "off");
+      TRANSMITPERIOD = 100 * (input-48);
+      if (TRANSMITPERIOD == 0) TRANSMITPERIOD = 1000;
+      Serial.print("\nChanging delay to ");
+      Serial.print(TRANSMITPERIOD);
+      Serial.println("ms\n");
     }
-    
+
+    if (input == 'r') //d=dump register values
+      radio.readAllRegs();
+    //if (input == 'E') //E=enable encryption
+    //  radio.encrypt(KEY);
+    //if (input == 'e') //e=disable encryption
+    //  radio.encrypt(null);
+
     // if (input == 'd') //d=dump flash area
     // {
     //   Serial.println("Flash content:");
-    //   int counter = 0;
+    //   uint16_t counter = 0;
 
+    //   Serial.print("0-256: ");
     //   while(counter<=256){
     //     Serial.print(flash.readByte(counter++), HEX);
     //     Serial.print('.');
@@ -166,9 +178,9 @@ void loop() {
     //   while(flash.busy());
     //   Serial.println();
     // }
-    // if (input == 'D')
+    // if (input == 'e')
     // {
-    //   Serial.print("Deleting Flash chip ... ");
+    //   Serial.print("Erasing Flash chip ... ");
     //   flash.chipErase();
     //   while(flash.busy());
     //   Serial.println("DONE");
@@ -179,61 +191,58 @@ void loop() {
     //   word jedecid = flash.readDeviceId();
     //   Serial.println(jedecid, HEX);
     // }
-    if (input == 't')
-    {
-      byte temperature =  radio.readTemperature(-1); // -1 = user cal factor, adjust for correct ambient
-      byte fTemp = 1.8 * temperature + 32; // 9/5=1.8
-      Serial.print( "Radio Temp is ");
-      Serial.print(temperature);
-      Serial.print("C, ");
-      Serial.print(fTemp); //converting to F loses some resolution, obvious when C is on edge between 2 values (ie 26C=78F, 27C=80F)
-      Serial.println('F');
-    }
   }
 
+  //check for any received packets
   if (radio.receiveDone())
   {
-    Serial.print("#[");
-    Serial.print(++packetCount);
-    Serial.print(']');
     Serial.print('[');Serial.print(radio.SENDERID, DEC);Serial.print("] ");
-    if (spy) Serial.print("to [");Serial.print(radio.TARGETID, DEC);Serial.print("] ");
     for (byte i = 0; i < radio.DATALEN; i++)
       Serial.print((char)radio.DATA[i]);
     Serial.print("   [RX_RSSI:");Serial.print(radio.RSSI);Serial.print("]");
-    
+
     if (radio.ACKRequested())
     {
-      byte theNodeID = radio.SENDERID;
       radio.sendACK();
-      Serial.print(" - ACK sent.");
-
-      // When a node requests an ACK, respond to the ACK
-      // and also send a packet requesting an ACK (every 3rd one only)
-      // This way both TX/RX NODE functions are tested on 1 end at the GATEWAY
-      if (ackCount++%3==0)
-      {
-        Serial.print(" Pinging node ");
-        Serial.print(theNodeID);
-        Serial.print(" - ACK...");
-        delay(3); //need this when sending right after reception .. ?
-        
-        String msg1 = "ACK TEST ";
-        String msg = msg1 + CALLSIGN;
-        if (radio.sendWithRetry(theNodeID, msg.c_str(), 8, 0))  // 0 = only 1 attempt, no retries
-          Serial.print("ok!");
-        else Serial.print("nothing");
-      }
+      Serial.print(" - ACK sent");
     }
+    Blink(LED_BUILTIN,3);
+    Serial.println();
+  }
+
+  int currPeriod = millis()/TRANSMITPERIOD;
+  if (currPeriod != lastPeriod)
+  {
+    Serial.println("made it here");
+    lastPeriod=currPeriod;
+
+    //send FLASH id
+    if(sendSize==0)
+    {
+      Serial.println("made it here 2");
+      sprintf(buff, "Callsign: %s", CALLSIGN);
+      byte buffLen=strlen(buff);
+      Serial.println("made it here 3");
+      if (radio.sendWithRetry(GATEWAYID, buff, buffLen, 3))
+        Serial.print(" ok!");
+      else Serial.print(" nothing...");
+      //sendSize = (sendSize + 1) % 31;
+      Serial.println("made it here 4");
+    }
+    else
+    {
+      Serial.print("Sending[");
+      Serial.print(sendSize);
+      Serial.print("]: ");
+      for(byte i = 0; i < sendSize; i++)
+        Serial.print((char)payload[i]);
+
+      if (radio.sendWithRetry(GATEWAYID, payload, sendSize))
+       Serial.print(" ok!");
+      else Serial.print(" nothing...");
+    }
+    sendSize = (sendSize + 1) % 31;
     Serial.println();
     Blink(LED_BUILTIN,3);
   }
-}
-
-void Blink(byte PIN, int DELAY_MS)
-{
-  pinMode(PIN, OUTPUT);
-  digitalWrite(PIN,HIGH);
-  delay(DELAY_MS);
-  digitalWrite(PIN,LOW);
 }
