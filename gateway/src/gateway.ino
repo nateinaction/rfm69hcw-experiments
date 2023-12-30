@@ -36,6 +36,7 @@
 // **********************************************************************************
 #include <RFM69.h>         //get it here: https://www.github.com/lowpowerlab/rfm69
 #include <RFM69_ATC.h>     //get it here: https://www.github.com/lowpowerlab/rfm69
+#include <string.h>        //included with Arduino IDE (www.arduino.cc)
 // #include <SPIFlash.h>      //get it here: https://www.github.com/lowpowerlab/spiflash
 // #include <SPI.h>           //included with Arduino IDE (www.arduino.cc)
 
@@ -209,7 +210,10 @@ void loop() {
         Serial.print(theNodeID);
         Serial.print(" - ACK...");
         delay(3); //need this when sending right after reception .. ?
-        if (radio.sendWithRetry(theNodeID, "ACK TEST KK4PDM", 8, 0))  // 0 = only 1 attempt, no retries
+        
+        String msg1 = "ACK TEST ";
+        String msg = msg1 + CALLSIGN;
+        if (radio.sendWithRetry(theNodeID, msg.c_str(), 8, 0))  // 0 = only 1 attempt, no retries
           Serial.print("ok!");
         else Serial.print("nothing");
       }
