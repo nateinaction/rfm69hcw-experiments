@@ -85,13 +85,15 @@ bool spy = false; //set to 'true' to sniff all packets on the same network
 
 void setup() {
   Serial.begin(SERIAL_BAUD);
-
-  Serial.print("Gateway ");
-  Serial.print(NODEID,DEC);
-  Serial.println(" ready");
+  Serial.println("Starting up");
 
   delay(10);
-  radio.initialize(FREQUENCY,NODEID,NETWORKID);
+  if (!radio.initialize(FREQUENCY,NODEID,NETWORKID)){
+    Serial.println("RFM69 radio init failed");
+    delay(50);
+    exit(1);
+  }
+
   radio.setHighPower(); //must include this only for RFM69HW/HCW!
 
 #ifdef ENCRYPTKEY
@@ -132,6 +134,10 @@ void setup() {
 #ifdef ENABLE_ATC
   Serial.println("RFM69_ATC Enabled (Auto Transmission Control)");
 #endif
+
+  Serial.print("Gateway ");
+  Serial.print(NODEID,DEC);
+  Serial.println(" ready");
 }
 
 byte ackCount=0;
@@ -143,10 +149,10 @@ void loop() {
     char input = Serial.read();
     if (input == 'r') //d=dump all register values
       radio.readAllRegs();
-    if (input == 'E') //E=enable encryption
-      radio.encrypt(ENCRYPTKEY);
-    if (input == 'e') //e=disable encryption
-      radio.encrypt(null);
+    // if (input == 'E') //E=enable encryption
+    //   radio.encrypt(ENCRYPTKEY);
+    // if (input == 'e') //e=disable encryption
+    //   radio.encrypt(null);
     if (input == 'p')
     {
       spy = !spy;

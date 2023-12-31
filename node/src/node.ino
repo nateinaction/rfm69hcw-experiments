@@ -92,7 +92,14 @@ boolean requestACK = false;
 
 void setup() {
   Serial.begin(SERIAL_BAUD);
-  radio.initialize(FREQUENCY,NODEID,NETWORKID);
+  Serial.println("Starting up");
+
+  if (!radio.initialize(FREQUENCY,NODEID,NETWORKID)){
+    Serial.println("RFM69 radio init failed");
+    delay(50);
+    exit(1);
+  }
+
   radio.setHighPower(); //must include this only for RFM69HW/HCW!
 
 #ifdef ENCRYPTKEY
