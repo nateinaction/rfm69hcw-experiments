@@ -70,7 +70,7 @@
 //By reducing TX power even a little you save a significant amount of battery power
 //This setting enables this gateway to work with remote nodes that have ATC enabled to
 //dial their power down to only the required level
-#define ENABLE_ATC    //comment out this line to disable AUTO TRANSMISSION CONTROL
+// #define ENABLE_ATC    //comment out this line to disable AUTO TRANSMISSION CONTROL
 //*********************************************************************************************
 #define SERIAL_BAUD   9600
 
@@ -88,11 +88,23 @@ void setup() {
   Serial.println("Starting up");
 
   delay(10);
-  if (!radio.initialize(FREQUENCY,NODEID,NETWORKID)){
+  uint32_t timeout = 3000;
+  uint32_t start = millis();
+  while (!radio.initialize(FREQUENCY,NODEID,NETWORKID) && millis()-start < timeout); // wait for radio to initialize
+  if (millis()-start >= timeout)
+  {
     Serial.println("RFM69 radio init failed");
-    delay(50);
+    radio.readAllRegs();
+    delay(20000);
     exit(1);
   }
+  radio.readAllRegs();
+  // if (!radio.initialize(FREQUENCY,NODEID,NETWORKID)){
+  //   Serial.println("RFM69 radio init failed");
+  //   radio.readAllRegs();
+  //   delay(20000);
+  //   exit(1);
+  // }
 
   radio.setHighPower(); //must include this only for RFM69HW/HCW!
 
@@ -109,28 +121,7 @@ void setup() {
   char buff[50];
   sprintf(buff, "\nListening at %d Mhz...", FREQUENCY==RF69_433MHZ ? 433 : FREQUENCY==RF69_868MHZ ? 868 : 915);
   Serial.println(buff);
-  // if (flash.initialize())
-  // {
-  //   Serial.print("SPI Flash Init OK. Unique MAC = [");
-  //   flash.readUniqueId();
-  //   for (byte i=0;i<8;i++)
-  //   {
-  //     Serial.print(flash.UNIQUEID[i], HEX);
-  //     if (i!=8) Serial.print(':');
-  //   }
-  //   Serial.println(']');
-    
-  //   //alternative way to read it:
-  //   //byte* MAC = flash.readUniqueId();
-  //   //for (byte i=0;i<8;i++)
-  //   //{
-  //   //  Serial.print(MAC[i], HEX);
-  //   //  Serial.print(' ');
-  //   //}
-  // }
-  // else
-  //   Serial.println("SPI Flash MEM not found (is chip soldered?)...");
-    
+  
 #ifdef ENABLE_ATC
   Serial.println("RFM69_ATC Enabled (Auto Transmission Control)");
 #endif
@@ -149,10 +140,7 @@ void loop() {
     char input = Serial.read();
     if (input == 'r') //d=dump all register values
       radio.readAllRegs();
-    // if (input == 'E') //E=enable encryption
-    //   radio.encrypt(ENCRYPTKEY);
-    // if (input == 'e') //e=disable encryption
-    //   radio.encrypt(null);
+
     if (input == 'p')
     {
       spy = !spy;
@@ -160,31 +148,6 @@ void loop() {
       Serial.print("SpyMode mode ");Serial.println(spy ? "on" : "off");
     }
     
-    // if (input == 'd') //d=dump flash area
-    // {
-    //   Serial.println("Flash content:");
-    //   int counter = 0;
-
-    //   while(counter<=256){
-    //     Serial.print(flash.readByte(counter++), HEX);
-    //     Serial.print('.');
-    //   }
-    //   while(flash.busy());
-    //   Serial.println();
-    // }
-    // if (input == 'D')
-    // {
-    //   Serial.print("Deleting Flash chip ... ");
-    //   flash.chipErase();
-    //   while(flash.busy());
-    //   Serial.println("DONE");
-    // }
-    // if (input == 'i')
-    // {
-    //   Serial.print("DeviceID: ");
-    //   word jedecid = flash.readDeviceId();
-    //   Serial.println(jedecid, HEX);
-    // }
     if (input == 't')
     {
       byte temperature =  radio.readTemperature(-1); // -1 = user cal factor, adjust for correct ambient
