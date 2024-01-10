@@ -70,7 +70,7 @@
 //By reducing TX power even a little you save a significant amount of battery power
 //This setting enables this gateway to work with remote nodes that have ATC enabled to
 //dial their power down to only the required level
-// #define ENABLE_ATC    //comment out this line to disable AUTO TRANSMISSION CONTROL
+#define ENABLE_ATC    //comment out this line to disable AUTO TRANSMISSION CONTROL
 //*********************************************************************************************
 #define SERIAL_BAUD   9600
 
@@ -88,24 +88,7 @@ void setup() {
   Serial.println("Starting up");
 
   delay(10);
-  uint32_t timeout = 3000;
-  uint32_t start = millis();
-  while (!radio.initialize(FREQUENCY,NODEID,NETWORKID) && millis()-start < timeout); // wait for radio to initialize
-  if (millis()-start >= timeout)
-  {
-    Serial.println("RFM69 radio init failed");
-    radio.readAllRegs();
-    delay(20000);
-    exit(1);
-  }
-  radio.readAllRegs();
-  // if (!radio.initialize(FREQUENCY,NODEID,NETWORKID)){
-  //   Serial.println("RFM69 radio init failed");
-  //   radio.readAllRegs();
-  //   delay(20000);
-  //   exit(1);
-  // }
-
+  radio.initialize(FREQUENCY,NODEID,NETWORKID);
   radio.setHighPower(); //must include this only for RFM69HW/HCW!
 
 #ifdef ENCRYPTKEY
@@ -127,7 +110,7 @@ void setup() {
 #endif
 
   Serial.print("Gateway ");
-  Serial.print(NODEID,DEC);
+  Serial.print(NODEID, DEC);
   Serial.println(" ready");
 }
 
