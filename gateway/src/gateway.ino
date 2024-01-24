@@ -80,7 +80,6 @@
   RFM69 radio;
 #endif
 
-// SPIFlash flash(SS_FLASHMEM, 0xEF30); //EF30 for 4mbit  Windbond chip (W25X40CL)
 bool spy = false; //set to 'true' to sniff all packets on the same network
 
 void setup() {
@@ -114,8 +113,7 @@ void setup() {
   Serial.println(" ready");
 }
 
-byte ackCount=0;
-uint32_t packetCount = 0;
+uint32_t ackCount = 0;
 void loop() {
   //process any serial input
   if (Serial.available() > 0)
@@ -146,7 +144,6 @@ void loop() {
   if (radio.receiveDone())
   {
     Serial.print("#[");
-    Serial.print(++packetCount);
     Serial.print(']');
     Serial.print('[');Serial.print(radio.SENDERID, DEC);Serial.print("] ");
     if (spy) Serial.print("to [");Serial.print(radio.TARGETID, DEC);Serial.print("] ");
@@ -165,6 +162,7 @@ void loop() {
       // This way both TX/RX NODE functions are tested on 1 end at the GATEWAY
       if (ackCount++%3==0)
       {
+        ackCount = 0; //reset counter
         Serial.print(" Pinging node ");
         Serial.print(theNodeID);
         Serial.print(" - ACK...");

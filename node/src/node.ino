@@ -27,7 +27,6 @@
 #include <RFM69.h>         //get it here: https://www.github.com/lowpowerlab/rfm69
 #include <RFM69_ATC.h>     //get it here: https://www.github.com/lowpowerlab/rfm69
 #include <string.h>        //included with Arduino IDE (www.arduino.cc)
-#include <CPUTemp.h>
 // #include <SPIFlash.h>      //get it here: https://www.github.com/lowpowerlab/spiflash
 
 //*********************************************************************************************
@@ -50,8 +49,6 @@
 // You can always set the frequency anywhere in the "frequency band", ex. the 915mhz ISM band is 902..928mhz.
 //*********************************************************************************************
 #define FREQUENCY   RF69_433MHZ
-// #define FREQUENCY   RF69_868MHZ
-// #define FREQUENCY     RF69_915MHZ
 // #define FREQUENCY_EXACT 916000000 // you may define an exact frequency/channel in Hz
 
 // FCC Section §97.113(a)(4) No amateur station shall transmit: messages encoded for the purpose of obscuring their meaning
@@ -80,9 +77,7 @@
 
 int TRANSMITPERIOD = 3000; //transmit a packet to gateway so often (in ms)
 char payload[] = "Texas State University Space Research Lab -- Helios-I High Altitude Balloon -- KK4PDM";
-// byte sendSize=0;
 boolean requestACK = true;
-// SPIFlash flash(SS_FLASHMEM, 0xEF30); //EF30 for 4mbit  Windbond chip (W25X40CL)
 
 #ifdef ENABLE_ATC
   RFM69_ATC radio;
@@ -94,18 +89,7 @@ void setup() {
   Serial.begin(SERIAL_BAUD);
   Serial.println("Starting up");
 
-  delay(10);
-  uint32_t timeout = 3000;
-  uint32_t start = millis();
-  while (!radio.initialize(FREQUENCY,NODEID,NETWORKID) && millis()-start < timeout); // wait for radio to initialize
-  if (millis()-start >= timeout)
-  {
-    Serial.println("RFM69 radio init failed");
-    radio.readAllRegs();
-    delay(20000);
-    exit(1);
-  }
-
+  radio.initialize(FREQUENCY,NODEID,NETWORKID);
   radio.setHighPower(); //must include this only for RFM69HW/HCW!
 
 #ifdef ENCRYPTKEY
